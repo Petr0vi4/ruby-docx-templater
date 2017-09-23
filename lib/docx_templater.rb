@@ -9,3 +9,4 @@ end
 
 require 'docx_templater/template_processor'
 require 'docx_templater/docx_creator'
+require 'docx_templater/block'

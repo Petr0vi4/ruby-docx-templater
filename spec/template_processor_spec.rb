@@ -6,23 +6,41 @@ require 'nokogiri'
 module DocxTemplater
   module TestData
     DATA = {
-      teacher: 'Priya Vora',
-      building: 'Building #14',
-      classroom: 'Rm 202'.to_sym,
-      district: 'Washington County Public Schools',
-      senority: 12.25,
-      roster: [
-        { name: 'Sally', age: 12, attendence: '100%' },
-        { name: :Xiao, age: 10, attendence: '94%' },
-        { name: 'Bryan', age: 13, attendence: '100%' },
-        { name: 'Larry', age: 11, attendence: '90%' },
-        { name: 'Kumar', age: 12, attendence: '76%' },
-        { name: 'Amber', age: 11, attendence: '100%' },
-        { name: 'Isaiah', age: 12, attendence: '89%' },
-        { name: 'Omar', age: 12, attendence: '99%' },
-        { name: 'Xi', age: 11, attendence: '20%' },
-        { name: 'Noushin', age: 12, attendence: '100%' }
-      ],
+      page_block: DocxTemplater::Block.new(
+        [
+          {
+            teacher: 'Priya Vora',
+            building: 'Building #14',
+            classroom: 'Rm 202'.to_sym,
+            district: 'Washington County Public Schools',
+            senority: 12.25,
+            roster: [
+              { name: 'Sally', age: 12, attendence: '100%' },
+              { name: :Xiao, age: 10, attendence: '94%' },
+              { name: 'Xi', age: 11, attendence: '20%' },
+            ],
+          },
+          {
+            teacher: 'Priya Vera',
+            building: 'Building #98',
+            classroom: 'Rm 202'.to_sym,
+            district: 'Washington County Public Schools',
+            senority: 12.25,
+            roster: [
+              { name: 'Sally', age: 12, attendence: '100%' },
+              { name: :Xiao, age: 10, attendence: '94%' },
+              { name: 'Bryan', age: 13, attendence: '100%' },
+              { name: 'Larry', age: 11, attendence: '90%' },
+              { name: 'Kumar', age: 12, attendence: '76%' },
+              { name: 'Amber', age: 11, attendence: '100%' },
+              { name: 'Isaiah', age: 12, attendence: '89%' },
+              { name: 'Omar', age: 12, attendence: '99%' },
+              { name: 'Xi', age: 11, attendence: '20%' },
+              { name: 'Noushin', age: 12, attendence: '100%' }
+            ],
+          }
+        ]
+      ),
       event_reports: [
         { name: 'Science Museum Field Trip', notes: 'PTA sponsored event. Spoke to Astronaut with HAM radio.' },
         { name: 'Wilderness Center Retreat', notes: '2 days hiking for charity:water fundraiser, $10,200 raised.' }
@@ -48,16 +66,16 @@ describe DocxTemplater::TemplateProcessor do
     end
 
     it 'should accept non-ascii characters' do
-      data[:teacher] = '老师'
+      data[:page_block].context[0][:teacher] = '老师'
       out = parser.render(xml)
       expect(out).to include('老师')
       expect(Nokogiri::XML.parse(out)).to be_xml
     end
 
     it 'should escape as necessary invalid xml characters, if told to' do
-      data[:building] = '23rd & A #1 floor'
-      data[:classroom] = '--> 201 <!--'
-      data[:roster][0][:name] = '<#Ai & Bo>'
+      data[:page_block].context[0][:building] = '23rd & A #1 floor'
+      data[:page_block].context[0][:classroom] = '--> 201 <!--'
+      data[:page_block].context[0][:roster][0][:name] = '<#Ai & Bo>'
       out = parser.render(xml)
 
       expect(Nokogiri::XML.parse(out)).to be_xml
@@ -69,7 +87,7 @@ describe DocxTemplater::TemplateProcessor do
     context 'not escape xml' do
       let(:parser) { DocxTemplater::TemplateProcessor.new(data, false) }
       it 'does not escape the xml attributes' do
-        data[:building] = '23rd <p>&amp;</p> #1 floor'
+        data[:page_block].context[0][:building] = '23rd <p>&amp;</p> #1 floor'
         out = parser.render(xml)
         expect(Nokogiri::XML.parse(out)).to be_xml
         expect(out).to include('23rd <p>&amp;</p> #1 floor')
@@ -158,7 +176,7 @@ EOF
   end
 
   it 'should replace all simple keys with values' do
-    non_array_keys = data.reject { |_, v| [Array, TrueClass, FalseClass].include?(v.class) }
+    non_array_keys = data.reject { |_, v| [Array, TrueClass, FalseClass, DocxTemplater::Block].include?(v.class) }
     non_array_keys.keys.each do |key|
       expect(xml).to include("$#{key.to_s.upcase}$")
       expect(xml).not_to include(data[key].to_s)
@@ -182,10 +200,19 @@ EOF
     expect(out).not_to include('#END_ROW:')
     expect(out).not_to include('$EACH:')
 
-    %i[roster event_reports].each do |key|
+    %i[event_reports].each do |key|
       data[key].each do |row|
         row.values.map(&:to_s).each do |row_value|
           expect(out).to include(row_value)
+        end
+      end
+    end
+    data[:page_block].context.each do |each_data|
+      %i[roster].each do |key|
+        each_data[key].each do |row|
+          row.values.map(&:to_s).each do |row_value|
+            expect(out).to include(row_value)
+          end
         end
       end
     end
@@ -202,14 +229,14 @@ EOF
     expect(out).not_to include('dont show this')
   end
 
-  it 'shold render students names in the same order as the data' do
+  it 'should render students names in the same order as the data' do
     out = parser.render(xml)
     expect(out).to include('Sally')
     expect(out).to include('Kumar')
     expect(out.index('Kumar')).to be > out.index('Sally')
   end
 
-  it 'shold render event reports names in the same order as the data' do
+  it 'should render event reports names in the same order as the data' do
     out = parser.render(xml)
     expect(out).to include('Science Museum Field Trip')
     expect(out).to include('Wilderness Center Retreat')
@@ -231,7 +258,9 @@ EOF
     expect(xml).to include('#SUM')
     out = parser.render(xml)
     expect(out).not_to include('#SUM')
-    expect(out).to include("#{data[:roster].count} Students")
+    data[:page_block].context.each do |each_data|
+      expect(out).to include("#{each_data[:roster].count} Students")
+    end
     expect(out).to include("#{data[:event_reports].count} Events")
   end
 end

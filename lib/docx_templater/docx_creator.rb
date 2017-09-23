@@ -4,9 +4,9 @@ module DocxTemplater
   class DocxCreator
     attr_reader :template_path, :template_processor
 
-    def initialize(template_path, data, escape_html = true)
+    def initialize(template_path, data, escape_html = true, rels = [])
       @template_path = template_path
-      @template_processor = TemplateProcessor.new(data, escape_html)
+      @template_processor = TemplateProcessor.new(data, escape_html, rels)
     end
 
     def generate_docx_file(file_name = "output_#{Time.now.strftime('%Y-%m-%d_%H%M')}.docx")
@@ -22,6 +22,7 @@ module DocxTemplater
           out.put_next_entry(entry_name)
           out.write(copy_or_template(entry_name, entry.get_input_stream.read))
         end
+        yield out if block_given?
       end
     end
 
@@ -31,6 +32,8 @@ module DocxTemplater
       # Inside the word document archive is one file with contents of the actual document. Modify it.
       if entry_name == 'word/document.xml'
         template_processor.render(entry_bytes)
+      elsif entry_name == 'word/_rels/document.xml.rels'
+        template_processor.render_rels(entry_bytes)
       else
         entry_bytes
       end
